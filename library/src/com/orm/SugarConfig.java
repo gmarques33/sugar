@@ -68,6 +68,10 @@ public class SugarConfig {
         return getMetaDataBoolean(context, "QUERY_LOG");
     }
 
+    public static boolean getCreateTableEnabled(Context context) {
+        return getMetaDataBoolean(context, "CREATE_TABLES");
+    }
+
     public static String getMetaDataString(Context context, String name) {
         String value = null;
 

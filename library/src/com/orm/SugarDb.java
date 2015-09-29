@@ -5,9 +5,11 @@ import static com.orm.SugarConfig.getDebugEnabled;
 
 import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Modifier;
@@ -20,6 +22,7 @@ import java.util.List;
 
 import android.content.Context;
 import android.content.pm.PackageManager;
+import android.content.res.AssetManager;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteException;
 import android.database.sqlite.SQLiteOpenHelper;
@@ -32,12 +35,62 @@ import dalvik.system.DexFile;
 
 public class SugarDb extends SQLiteOpenHelper {
     private Context context;
+    private boolean mInvalidDatabaseFile = false;
+    private File DATABASE_FILE;
 
     public SugarDb(Context context) {
         super(context, SugarConfig.getDatabaseName(context), new SugarCursorFactory(getDebugEnabled(context)), getDatabaseVersion(context));
         this.context = context;
+        DATABASE_FILE = context.getDatabasePath(SugarConfig.getDatabaseName(context));
+
+
+        SQLiteDatabase db = null;
+        try {
+            db = getReadableDatabase();
+            if (db != null) {
+                db.close();
+            }
+
+            if (mInvalidDatabaseFile && !SugarConfig.getCreateTableEnabled(context)) {
+                copyDatabase();
+            }
+        } catch (SQLiteException e) {
+        } finally {
+            if (db != null && db.isOpen()) {
+                db.close();
+            }
+        }
 
     }
+
+    private void copyDatabase() {
+        AssetManager assetManager = context.getResources().getAssets();
+        InputStream in = null;
+        OutputStream out = null;
+        try {
+            in = assetManager.open(SugarConfig.getDatabaseName(context));
+            out = new FileOutputStream(DATABASE_FILE);
+            byte[] buffer = new byte[1024];
+            int read = 0;
+            while ((read = in.read(buffer)) != -1) {
+                out.write(buffer, 0, read);
+            }
+        } catch (IOException e) {
+        } finally {
+            if (in != null) {
+                try {
+                    in.close();
+                } catch (IOException e) {}
+            }
+            if (out != null) {
+                try {
+                    out.close();
+                } catch (IOException e) {}
+            }
+        }
+        mInvalidDatabaseFile = false;
+    }
+
 
     private <T extends SugarRecord<?>> List<T> getDomainClasses(Context context) {
         List<T> domainClasses = new ArrayList<T>();
@@ -145,8 +198,12 @@ public class SugarDb extends SQLiteOpenHelper {
 
     @Override
     public void onCreate(SQLiteDatabase sqLiteDatabase) {
-        Log.i("Sugar", "on create");
-        createDatabase(sqLiteDatabase);
+        Log.i("Sugar", "on create. Criar base: " + String.valueOf(SugarConfig.getCreateTableEnabled(context)));
+        mInvalidDatabaseFile = true;
+        if (SugarConfig.getCreateTableEnabled(context)) {
+            Log.i("Sugar", "criando base");
+            createDatabase(sqLiteDatabase);
+        }
     }
 
     private <T extends SugarRecord<?>> void createDatabase(SQLiteDatabase sqLiteDatabase) {
